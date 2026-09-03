@@ -1,49 +1,79 @@
 # Claude Code token usage -> Honeycomb. Idempotent: recomputes totals from scratch each run.
+# Sends one overall event plus one event per session (with the first user prompt as title).
 $ErrorActionPreference = 'Stop'
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $configPath = Join-Path $PSScriptRoot 'config.json'
 $config = Get-Content $configPath -Raw | ConvertFrom-Json
 
-$totals = @{ input = 0L; output = 0L; cache_write = 0L; cache_read = 0L; requests = 0L; sessions = 0 }
 $projectsDir = Join-Path $env:USERPROFILE '.claude\projects'
+$sessions = @()
 
 if (Test-Path $projectsDir) {
-    $files = Get-ChildItem $projectsDir -Recurse -Filter '*.jsonl'
-    foreach ($f in $files) {
-        $hadUsage = $false
+    foreach ($f in Get-ChildItem $projectsDir -Recurse -Filter '*.jsonl') {
+        $s = @{ id = $f.BaseName; project = $f.Directory.Name; title = $null
+                input = 0L; output = 0L; cache_write = 0L; cache_read = 0L; requests = 0L }
         foreach ($line in [System.IO.File]::ReadLines($f.FullName)) {
+            if ((-not $s.title) -and $line -match '"type":"user"') {
+                try {
+                    $o = $line | ConvertFrom-Json
+                    $c = $o.message.content
+                    if ($c -is [string] -and $c -and $c -notmatch '^<' -and $o.isSidechain -ne $true) {
+                        $s.title = $c.Substring(0, [Math]::Min(200, $c.Length))
+                    }
+                } catch {}
+            }
             if ($line -notmatch '"usage"') { continue }
             try { $obj = $line | ConvertFrom-Json } catch { continue }
             $u = $obj.message.usage
             if ($null -eq $u) { continue }
-            $hadUsage = $true
-            $totals.requests++
-            if ($u.input_tokens)                 { $totals.input       += [long]$u.input_tokens }
-            if ($u.output_tokens)                { $totals.output      += [long]$u.output_tokens }
-            if ($u.cache_creation_input_tokens)  { $totals.cache_write += [long]$u.cache_creation_input_tokens }
-            if ($u.cache_read_input_tokens)      { $totals.cache_read  += [long]$u.cache_read_input_tokens }
+            $s.requests++
+            if ($u.input_tokens)                { $s.input       += [long]$u.input_tokens }
+            if ($u.output_tokens)               { $s.output      += [long]$u.output_tokens }
+            if ($u.cache_creation_input_tokens) { $s.cache_write += [long]$u.cache_creation_input_tokens }
+            if ($u.cache_read_input_tokens)     { $s.cache_read  += [long]$u.cache_read_input_tokens }
         }
-        if ($hadUsage) { $totals.sessions++ }
+        if ($s.requests -gt 0) { $sessions += $s }
     }
 }
 
-$event = @{
-    name                 = 'claude_code.token_usage'
-    host                 = $env:COMPUTERNAME
-    user                 = $env:USERNAME
-    input_tokens         = $totals.input
-    output_tokens        = $totals.output
-    cache_write_tokens   = $totals.cache_write
-    cache_read_tokens    = $totals.cache_read
-    total_tokens         = $totals.input + $totals.output + $totals.cache_write + $totals.cache_read
-    requests             = $totals.requests
-    sessions_with_usage  = $totals.sessions
+function Total($sess, $prop) { [long](($sess | ForEach-Object { $_[$prop] } | Measure-Object -Sum).Sum) }
+
+$events = @()
+$events += @{ data = @{
+    name                = 'claude_code.token_usage'
+    host                = $env:COMPUTERNAME
+    user                = $env:USERNAME
+    input_tokens        = (Total $sessions 'input')
+    output_tokens       = (Total $sessions 'output')
+    cache_write_tokens  = (Total $sessions 'cache_write')
+    cache_read_tokens   = (Total $sessions 'cache_read')
+    total_tokens        = ((Total $sessions 'input') + (Total $sessions 'output') + (Total $sessions 'cache_write') + (Total $sessions 'cache_read'))
+    requests            = (Total $sessions 'requests')
+    sessions_with_usage = $sessions.Count
+} }
+
+foreach ($s in $sessions) {
+    $events += @{ data = @{
+        name               = 'claude_code.session_usage'
+        host               = $env:COMPUTERNAME
+        user               = $env:USERNAME
+        session_id         = $s.id
+        project            = $s.project
+        title              = $s.title
+        input_tokens       = $s.input
+        output_tokens      = $s.output
+        cache_write_tokens = $s.cache_write
+        cache_read_tokens  = $s.cache_read
+        total_tokens       = $s.input + $s.output + $s.cache_write + $s.cache_read
+        requests           = $s.requests
+    } }
 }
 
-$uri = "https://api.honeycomb.io/1/events/$($config.dataset)"
+$uri = "https://api.honeycomb.io/1/batch/$($config.dataset)"
+$body = [System.Text.Encoding]::UTF8.GetBytes((ConvertTo-Json @($events) -Depth 5))
 Invoke-RestMethod -Uri $uri -Method Post `
     -Headers @{ 'X-Honeycomb-Team' = $config.apiKey } `
-    -ContentType 'application/json' `
-    -Body ($event | ConvertTo-Json) | Out-Null
+    -ContentType 'application/json' -Body $body | Out-Null
 
-Write-Host "Reported: $($event | ConvertTo-Json -Compress)"
+Write-Host "Reported $($events.Count) events ($($sessions.Count) sessions)."
