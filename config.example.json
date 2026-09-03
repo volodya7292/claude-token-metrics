@@ -1,0 +1,4 @@
+{
+  "apiKey": "YOUR_HONEYCOMB_INGEST_KEY",
+  "dataset": "claude-code-usage"
+}
