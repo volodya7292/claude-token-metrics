@@ -15,7 +15,9 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatt
 function Register-RepeatingTask($name, $file, $interval) {
     $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
         -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$file`""
-    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $env:USERNAME
+    # Use full user name (DOMAIN\User or MACHINE\User) because Task Scheduler expects that format.
+    $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    $trigger = New-ScheduledTaskTrigger -AtLogOn -User $user
     $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) `
         -RepetitionInterval $interval).Repetition
     # Idempotent: replace existing task if present
