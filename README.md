@@ -20,8 +20,7 @@ changes nothing.
 ## Install (no clone needed)
 
 ```powershell
-$env:HONEYCOMB_API_KEY = 'hcaik_...'          # optional, prompted otherwise
-$env:HONEYCOMB_DATASET = 'claude-code-usage'  # optional, this is the default
+$env:HONEYCOMB_API_KEY = 'hcaik_...'   # optional, prompted otherwise
 iex (iwr https://raw.githubusercontent.com/volodya7292/claude-token-metrics/main/bootstrap.ps1).Content
 ```
 
