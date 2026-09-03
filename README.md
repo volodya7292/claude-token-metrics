@@ -17,10 +17,23 @@ changes nothing.
 - Claude Code installed for the current user
 - A Honeycomb ingest API key
 
-## Install
+## Install (no clone needed)
 
 ```powershell
-git clone https://github.com/<you>/claude-token-metrics.git
+$env:GITHUB_TOKEN = 'ghp_...'            # token with read access to this private repo
+$env:HONEYCOMB_API_KEY = 'hcaik_...'     # optional, prompted otherwise
+$env:HONEYCOMB_DATASET = 'claude-code-usage'  # optional, this is the default
+iex (iwr -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
+    https://raw.githubusercontent.com/volodya7292/claude-token-metrics/main/bootstrap.ps1).Content
+```
+
+This downloads the repo zip to `%LOCALAPPDATA%\claude-token-metrics`, writes
+`config.json`, and registers the Scheduled Task.
+
+### Alternative: from a clone
+
+```powershell
+git clone https://github.com/volodya7292/claude-token-metrics.git
 cd claude-token-metrics
 Copy-Item config.example.json config.json   # put your Honeycomb ingest key + dataset in it
 powershell -ExecutionPolicy Bypass -File install.ps1
@@ -64,3 +77,4 @@ weight the four token categories with their respective per-model prices.
 - `collect.ps1` — computes totals and posts the event
 - `install.ps1` / `uninstall.ps1` — manage the Scheduled Task
 - `config.example.json` — template for `config.json`
+- `bootstrap.ps1` — clone-free installer (downloads the repo zip and runs `install.ps1`)
