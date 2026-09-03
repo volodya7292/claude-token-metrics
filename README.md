@@ -20,15 +20,15 @@ changes nothing.
 ## Install (no clone needed)
 
 ```powershell
-$env:GITHUB_TOKEN = 'ghp_...'            # token with read access to this private repo
-$env:HONEYCOMB_API_KEY = 'hcaik_...'     # optional, prompted otherwise
+$env:HONEYCOMB_API_KEY = 'hcaik_...'          # optional, prompted otherwise
 $env:HONEYCOMB_DATASET = 'claude-code-usage'  # optional, this is the default
-iex (iwr -Headers @{ Authorization = "Bearer $env:GITHUB_TOKEN" } `
-    https://raw.githubusercontent.com/volodya7292/claude-token-metrics/main/bootstrap.ps1).Content
+iex (iwr https://raw.githubusercontent.com/volodya7292/claude-token-metrics/main/bootstrap.ps1).Content
 ```
 
 This downloads the repo zip to `%LOCALAPPDATA%\claude-token-metrics`, writes
-`config.json`, and registers the Scheduled Task.
+`config.json`, and registers two Scheduled Tasks: the 10-minute collector and an
+hourly update check that pulls the latest `main` when its head commit changed
+(`config.json` is preserved across updates).
 
 ### Alternative: from a clone
 
@@ -78,3 +78,4 @@ weight the four token categories with their respective per-model prices.
 - `install.ps1` / `uninstall.ps1` — manage the Scheduled Task
 - `config.example.json` — template for `config.json`
 - `bootstrap.ps1` — clone-free installer (downloads the repo zip and runs `install.ps1`)
+- `update.ps1` — hourly self-updater (replaces files when `main` has a new commit)
