@@ -1,23 +1,66 @@
 # claude-token-metrics
 
-Background collector (Windows Scheduled Task) that every 10 minutes sums the
-total Claude Code token usage of the current user from
-`%USERPROFILE%\.claude\projects\**\*.jsonl` and sends one event to Honeycomb.
+A tiny Windows background tool that reports your total [Claude Code](https://claude.com/claude-code)
+token usage to [Honeycomb](https://www.honeycomb.io/) every 10 minutes.
 
-Idempotent: each run recomputes the totals from scratch and reports them as
-absolute gauges - running it twice changes nothing.
+It runs as a hidden Scheduled Task (at logon + every 10 minutes), scans the local
+Claude Code session transcripts under `%USERPROFILE%\.claude\projects\**\*.jsonl`,
+sums all `message.usage` entries, and sends one event to the Honeycomb Events API.
+
+The collector is **idempotent**: every run recomputes the totals from scratch and
+reports them as absolute gauges. No local state, and running it twice in a row
+changes nothing.
+
+## Requirements
+
+- Windows with PowerShell 5.1+ (no admin rights needed)
+- Claude Code installed for the current user
+- A Honeycomb ingest API key
 
 ## Install
 
 ```powershell
-Copy-Item config.example.json config.json   # then put your Honeycomb ingest key in it
+git clone https://github.com/<you>/claude-token-metrics.git
+cd claude-token-metrics
+Copy-Item config.example.json config.json   # put your Honeycomb ingest key + dataset in it
 powershell -ExecutionPolicy Bypass -File install.ps1
 ```
 
-Re-running `install.ps1` replaces the existing task. Remove with `uninstall.ps1`.
+`install.ps1` registers (or replaces) the Scheduled Task `ClaudeTokenMetrics` and
+starts it immediately. Re-running the installer is safe.
 
-## Metrics (per event)
+`config.json` is gitignored so your API key never ends up in the repo.
 
-`input_tokens`, `output_tokens`, `cache_write_tokens`, `cache_read_tokens`,
-`total_tokens`, `requests`, `sessions_with_usage`, plus `host`/`user`.
-In Honeycomb, query `MAX(total_tokens)` over time to see growth.
+## Uninstall
+
+```powershell
+powershell -ExecutionPolicy Bypass -File uninstall.ps1
+```
+
+## Event fields
+
+Each event (`name = claude_code.token_usage`) contains:
+
+| Field | Meaning |
+|---|---|
+| `input_tokens` | total non-cached input tokens |
+| `output_tokens` | total output tokens |
+| `cache_write_tokens` | total prompt-cache write tokens |
+| `cache_read_tokens` | total prompt-cache read tokens |
+| `total_tokens` | sum of the four above |
+| `requests` | number of API requests found |
+| `sessions_with_usage` | session files that contained usage data |
+| `host`, `user` | machine and user name |
+
+## Querying in Honeycomb
+
+The values are cumulative totals, so plot `MAX(total_tokens)` over time to see
+growth, or `MAX(total_tokens) - MIN(total_tokens)` per time bucket for the rate.
+Note that `cache_read_tokens` usually dominates by far; for cost estimates,
+weight the four token categories with their respective per-model prices.
+
+## Files
+
+- `collect.ps1` — computes totals and posts the event
+- `install.ps1` / `uninstall.ps1` — manage the Scheduled Task
+- `config.example.json` — template for `config.json`
