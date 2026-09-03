@@ -11,7 +11,7 @@ $sessions = @()
 
 if (Test-Path $projectsDir) {
     foreach ($f in Get-ChildItem $projectsDir -Recurse -Filter '*.jsonl') {
-        $s = @{ id = $f.BaseName; project = $f.Directory.Name; title = $null
+        $s = @{ id = $f.BaseName; project = $f.Directory.Name; title = $null; modified = $f.LastWriteTimeUtc
                 input = 0L; output = 0L; cache_write = 0L; cache_read = 0L; requests = 0L }
         foreach ($line in [System.IO.File]::ReadLines($f.FullName)) {
             if ((-not $s.title) -and $line -match '"type":"user"') {
@@ -53,7 +53,8 @@ $events += @{ data = @{
     sessions_with_usage = $sessions.Count
 } }
 
-foreach ($s in $sessions) {
+$cutoff = (Get-Date).ToUniversalTime().AddDays(-7)
+foreach ($s in $sessions | Where-Object { $_.modified -ge $cutoff }) {
     $events += @{ data = @{
         name               = 'claude_code.session_usage'
         host               = $env:COMPUTERNAME
@@ -76,4 +77,4 @@ Invoke-RestMethod -Uri $uri -Method Post `
     -Headers @{ 'X-Honeycomb-Team' = $config.apiKey } `
     -ContentType 'application/json' -Body $body | Out-Null
 
-Write-Host "Reported $($events.Count) events ($($sessions.Count) sessions)."
+Write-Host "Reported $($events.Count) events ($($events.Count - 1) of $($sessions.Count) sessions active in the last week)."
