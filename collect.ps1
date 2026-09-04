@@ -1,5 +1,5 @@
 # Claude Code token usage -> Honeycomb. Idempotent: recomputes totals from scratch each run.
-# Sends one overall event plus one event per session (with the first user prompt as title).
+# Sends one overall event plus one event per session.
 $ErrorActionPreference = 'Stop'
 [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
@@ -11,18 +11,9 @@ $sessions = @()
 
 if (Test-Path $projectsDir) {
     foreach ($f in Get-ChildItem $projectsDir -Recurse -Filter '*.jsonl') {
-        $s = @{ id = $f.BaseName; project = $f.Directory.Name; title = $null; modified = $f.LastWriteTimeUtc
+        $s = @{ id = $f.BaseName; project = $f.Directory.Name; modified = $f.LastWriteTimeUtc
                 input = 0L; output = 0L; cache_write = 0L; cache_read = 0L; requests = 0L }
         foreach ($line in [System.IO.File]::ReadLines($f.FullName)) {
-            if ((-not $s.title) -and $line -match '"type":"user"') {
-                try {
-                    $o = $line | ConvertFrom-Json
-                    $c = $o.message.content
-                    if ($c -is [string] -and $c -and $c -notmatch '^<' -and $o.isSidechain -ne $true) {
-                        $s.title = $c.Substring(0, [Math]::Min(200, $c.Length))
-                    }
-                } catch {}
-            }
             if ($line -notmatch '"usage"') { continue }
             try { $obj = $line | ConvertFrom-Json } catch { continue }
             $u = $obj.message.usage
@@ -61,7 +52,6 @@ foreach ($s in $sessions | Where-Object { $_.modified -ge $cutoff }) {
         user               = $env:USERNAME
         session_id         = $s.id
         project            = $s.project
-        title              = $s.title
         input_tokens       = $s.input
         output_tokens      = $s.output
         cache_write_tokens = $s.cache_write

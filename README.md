@@ -52,9 +52,8 @@ powershell -ExecutionPolicy Bypass -File uninstall.ps1
 ## Event fields
 
 Each run sends one `claude_code.token_usage` event with the overall totals plus
-one `claude_code.session_usage` event per session, carrying `session_id`,
-`project`, and `title` (the session's first user prompt, truncated to 200
-chars) alongside the same token fields.
+one `claude_code.session_usage` event per session, carrying `session_id` and
+`project` alongside the same token fields.
 
 The overall event (`name = claude_code.token_usage`) contains:
 
