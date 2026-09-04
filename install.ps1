@@ -13,8 +13,10 @@ $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -AllowStartIfOnBatt
     -DontStopIfGoingOnBatteries -ExecutionTimeLimit (New-TimeSpan -Minutes 5)
 
 function Register-RepeatingTask($name, $file, $interval) {
-    $action = New-ScheduledTaskAction -Execute 'powershell.exe' `
-        -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$file`""
+    # Launch via wscript so no console window flashes (powershell -WindowStyle Hidden still does).
+    $launcher = Join-Path $PSScriptRoot 'run-hidden.vbs'
+    $action = New-ScheduledTaskAction -Execute 'wscript.exe' `
+        -Argument "//B //Nologo `"$launcher`" `"$file`""
     # Use full user name (DOMAIN\User or MACHINE\User) because Task Scheduler expects that format.
     $user = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
     # Repetition attached to AtLogOn only starts at the next logon, so add a -Once trigger
